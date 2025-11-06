@@ -8,7 +8,6 @@ import os
 import streamlit_authenticator as stauth 
 
 # --- KONFIGURÁCIA API (Čítanie z Streamlit Secrets) ---
-# Tieto hodnoty musia byť nastavené v Streamlit Cloud Secrets (secrets.toml)
 try:
     BASE_URL = st.secrets["API_CONFIG"]["BASE_URL"]
     USER_EMAIL = st.secrets["API_CONFIG"]["EMAIL"]
@@ -30,24 +29,16 @@ REGULATOR_IDS = {
 LOG_FILE = "teplota_log.csv"
 DAYS_TO_SHOW = 3 
 
-# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Opravený formát) ---
-# Heslo: admin123 (použitý haš)
-CREDENTIALS = {
-    "usernames": {
-        "admin": {
-            "email": "admin@example.com", 
-            "name": "Admin User",
-            # Haš hesla 'admin123'
-            "password": "bcrypt:$2b$12$R.K0J.O.Xz1Z0p9k0k0vO.u.k0J.O.Xz1Z0p9k0k0vO.u." 
-        }
-    }
-}
+# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Formát pre V0.1.5) ---
+NAMES = ['Admin User']
+USERNAMES = ['admin']
+# Heslo: admin123 (Použitý haš)
+HASHED_PASSWORDS = ['bcrypt:$2b$12$R.K0J.O.Xz1Z0p9k0k0vO.u.k0J.O.Xz1Z0p9k0k0vO.u.'] 
 
 # --- CACHED FUNKCIE (API VOLANIA) ---
 
 @st.cache_data(ttl=3600) 
 def login(email, password):
-    """Prihlási užívateľa a vráti autentizačný token."""
     url = f"{BASE_URL}/authentication"
     payload = {"username": email, "password": password}
     headers = {"Content-Type": "application/json"}
@@ -63,7 +54,6 @@ def login(email, password):
 
 @st.cache_data(ttl=65) 
 def get_module_status(user_id, module_udid, token):
-    """Získa všetky dáta modulu."""
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}"
     headers = {"Authorization": f"Bearer {token}"}
     r = requests.get(url, headers=headers)
@@ -71,7 +61,6 @@ def get_module_status(user_id, module_udid, token):
     return r.json()
 
 def set_temperature(user_id, module_udid, token, reg_id, temp_c):
-    """Nastaví požadovanú teplotu (°C)."""
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}/menu/{MENU_TYPE}/ido/{reg_id}"
     payload = {"value": int(round(temp_c * 10))} 
     headers = {
@@ -86,22 +75,16 @@ def set_temperature(user_id, module_udid, token, reg_id, temp_c):
 # --- FUNKCIE PRE LOGOVANIE A ŠTATISTIKY ---
 
 def log_temperature(status_data, log_file):
-    """
-    Načíta aktuálne teploty zo stavu a uloží ich do CSV súboru.
-    """
     data_list = status_data.get("tiles", [])
     current_time = datetime.now()
-    
     log_entry = {'timestamp': current_time}
     for zone_name, reg_id in REGULATOR_IDS.items():
         target_item = next((item for item in data_list if item.get("id") == reg_id), None)
         if target_item:
             raw_current = target_item.get("params", {}).get("widget2", {}).get("value")
             log_entry[zone_name] = raw_current / 10.0 if isinstance(raw_current, (int, float)) else None
-
     new_df = pd.DataFrame([log_entry])
     new_df = new_df.set_index('timestamp')
-
     if os.path.exists(log_file):
         try:
             df_existing = pd.read_csv(log_file, index_col='timestamp', parse_dates=True)
@@ -111,48 +94,42 @@ def log_temperature(status_data, log_file):
             df_combined = new_df
     else:
         df_combined = new_df
-        
     time_limit = current_time - timedelta(days=DAYS_TO_SHOW)
     df_combined = df_combined[df_combined.index >= time_limit]
-
     df_combined.to_csv(log_file)
     return df_combined
 
 def show_statistics_page(log_file, days_to_show):
-    """Načíta logovacie dáta a vykreslí graf."""
     st.title("📈 Historické Štatistiky Teploty")
     st.markdown(f"Zobrazenie dát za posledných **{days_to_show} dní**.")
-
     if not os.path.exists(log_file):
         st.warning("Zatiaľ neboli zaznamenané žiadne historické dáta. Záznam sa spustí pri najbližšej aktualizácii.")
         return
-
     try:
         df = pd.read_csv(log_file, index_col='timestamp', parse_dates=True)
         time_limit = datetime.now() - timedelta(days=days_to_show)
         df_filtered = df[df.index >= time_limit]
-        
         if df_filtered.empty:
             st.warning("V logu nie sú žiadne záznamy pre dané časové obdobie.")
             return
-
         st.line_chart(df_filtered)
         st.subheader("Detail Logovacích Dát")
         st.dataframe(df_filtered)
-
     except Exception as e:
         st.error(f"Chyba pri načítaní a zobrazení historických dát: {e}")
 
-# --- INICIALIZÁCIA AUTENTIFIKÁTORA ---
+# --- INICIALIZÁCIA AUTENTIFIKÁTORA (Formát pre V0.1.5) ---
 
 authenticator = stauth.Authenticate(
-    CREDENTIALS,
+    NAMES,
+    USERNAMES,
+    HASHED_PASSWORDS,
     'termostat_cookie',
     'abcdef', 
 )
 
-# ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV (Najzákladnejšie volanie)
-name, authentication_status, username = authenticator.login('Login Form', 'main')
+# ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV (Formát pre V0.1.5)
+name, authentication_status, username = authenticator.login('Login Form', 'main') 
 
 
 # --- HLAVNÝ BEH APLIKÁCIE ---
@@ -274,4 +251,3 @@ elif authentication_status is False:
     st.error('Používateľské meno/heslo je nesprávne.')
 elif authentication_status is None:
     st.warning('Prosím, zadajte svoje prihlasovacie údaje na prístup.')
-
