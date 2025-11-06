@@ -30,15 +30,16 @@ LOG_FILE = "teplota_log.csv"
 DAYS_TO_SHOW = 3 
 
 # --- KONFIGURÁCIA AUTENTIFIKÁCIE (Formát pre V0.1.5) ---
-NAMES = ['Admin User']
-USERNAMES = ['admin']
-# Heslo: admin123 (Použitý haš)
-HASHED_PASSWORDS = ['kai8Jaem'] 
+NAMES = ['Test User']
+USERNAMES = ['testuser']
+# Používame čistý text 'testheslo'
+HASHED_PASSWORDS = ['testheslo'] 
 
 # --- CACHED FUNKCIE (API VOLANIA) ---
 
 @st.cache_data(ttl=3600) 
 def login(email, password):
+    """Prihlási užívateľa a vráti autentizačný token."""
     url = f"{BASE_URL}/authentication"
     payload = {"username": email, "password": password}
     headers = {"Content-Type": "application/json"}
@@ -54,6 +55,7 @@ def login(email, password):
 
 @st.cache_data(ttl=65) 
 def get_module_status(user_id, module_udid, token):
+    """Získa všetky dáta modulu."""
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}"
     headers = {"Authorization": f"Bearer {token}"}
     r = requests.get(url, headers=headers)
@@ -61,6 +63,7 @@ def get_module_status(user_id, module_udid, token):
     return r.json()
 
 def set_temperature(user_id, module_udid, token, reg_id, temp_c):
+    """Nastaví požadovanú teplotu (°C)."""
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}/menu/{MENU_TYPE}/ido/{reg_id}"
     payload = {"value": int(round(temp_c * 10))} 
     headers = {
@@ -75,6 +78,7 @@ def set_temperature(user_id, module_udid, token, reg_id, temp_c):
 # --- FUNKCIE PRE LOGOVANIE A ŠTATISTIKY ---
 
 def log_temperature(status_data, log_file):
+    """Načíta aktuálne teploty zo stavu a uloží ich do CSV súboru."""
     data_list = status_data.get("tiles", [])
     current_time = datetime.now()
     log_entry = {'timestamp': current_time}
@@ -100,6 +104,7 @@ def log_temperature(status_data, log_file):
     return df_combined
 
 def show_statistics_page(log_file, days_to_show):
+    """Načíta logovacie dáta a vykreslí graf."""
     st.title("📈 Historické Štatistiky Teploty")
     st.markdown(f"Zobrazenie dát za posledných **{days_to_show} dní**.")
     if not os.path.exists(log_file):
@@ -124,8 +129,8 @@ authenticator = stauth.Authenticate(
     NAMES,
     USERNAMES,
     HASHED_PASSWORDS,
-    'termostat_cookie',
-    'abcdef', 
+    'new_auth_cookie', # Unikátny názov pre test
+    'random_secret_key_123', # Unikátny tajný kľúč
 )
 
 # ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV (Formát pre V0.1.5)
@@ -251,4 +256,3 @@ elif authentication_status is False:
     st.error('Používateľské meno/heslo je nesprávne.')
 elif authentication_status is None:
     st.warning('Prosím, zadajte svoje prihlasovacie údaje na prístup.')
-
