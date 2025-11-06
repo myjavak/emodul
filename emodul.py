@@ -33,7 +33,7 @@ DAYS_TO_SHOW = 3
 NAMES = ['Admin User']
 USERNAMES = ['admin']
 # Heslo: admin123 (Použitý haš)
-HASHED_PASSWORDS = ['bcrypt:$2b$12$R.K0J.O.Xz1Z0p9k0k0vO.u.k0J.O.Xz1Z0p9k0k0vO.u.'] 
+HASHED_PASSWORDS = ['kai8Jaem'] 
 
 # --- CACHED FUNKCIE (API VOLANIA) ---
 
@@ -251,3 +251,4 @@ elif authentication_status is False:
     st.error('Používateľské meno/heslo je nesprávne.')
 elif authentication_status is None:
     st.warning('Prosím, zadajte svoje prihlasovacie údaje na prístup.')
+
