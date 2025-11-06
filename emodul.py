@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import os
-import streamlit_authenticator as stauth # Dôležité: Potrebuje instalaciu 'streamlit-authenticator'
+import streamlit_authenticator as stauth 
 
 # --- KONFIGURÁCIA API (Čítanie z Streamlit Secrets) ---
 # Tieto hodnoty musia byť nastavené v Streamlit Cloud Secrets (secrets.toml)
@@ -18,7 +18,7 @@ try:
     MENU_TYPE = "MU"
 except KeyError as e:
     st.error(f"❌ Chyba konfigurácie Secrets: Chýba kľúč {e}. Skontrolujte nastavenie v Streamlit Cloud.")
-    st.stop() # Zastavíme aplikáciu, ak chýba tajný kľúč
+    st.stop() 
 
 REGULATOR_IDS = {
     "zóna_1": 4615, 
@@ -30,7 +30,7 @@ REGULATOR_IDS = {
 LOG_FILE = "teplota_log.csv"
 DAYS_TO_SHOW = 3 
 
-# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Opravený formát pre TypeError) ---
+# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Opravený formát) ---
 # Heslo: admin123 (použitý haš)
 CREDENTIALS = {
     "usernames": {
@@ -61,7 +61,7 @@ def login(email, password):
             raise Exception(f"Nenašiel som token v odpovedi.")
         return token
 
-@st.cache_data(ttl=65) # Čakáme dlhšie ako je oneskorenie API
+@st.cache_data(ttl=65) 
 def get_module_status(user_id, module_udid, token):
     """Získa všetky dáta modulu."""
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}"
@@ -148,11 +148,11 @@ def show_statistics_page(log_file, days_to_show):
 authenticator = stauth.Authenticate(
     CREDENTIALS,
     'termostat_cookie',
-    'abcdef', # Nastavte na tajný kľúč
+    'abcdef', 
 )
 
-# ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV
-name, authentication_status, username = authenticator.login()
+# ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV (Najzákladnejšie volanie)
+name, authentication_status, username = authenticator.login() 
 
 
 # --- HLAVNÝ BEH APLIKÁCIE ---
@@ -161,7 +161,7 @@ name, authentication_status, username = authenticator.login()
 if authentication_status: 
     
     # --- BOČNÉ MENU A LOGOUT ---
-authenticator.logout('Odhlásiť sa', location='sidebar')
+    authenticator.logout('Odhlásiť sa', location='sidebar')
     
     if 'page' not in st.session_state:
         st.session_state.page = 'Control'
@@ -274,6 +274,3 @@ elif authentication_status is False:
     st.error('Používateľské meno/heslo je nesprávne.')
 elif authentication_status is None:
     st.warning('Prosím, zadajte svoje prihlasovacie údaje na prístup.')
-
-
-
