@@ -6,22 +6,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 
-# --- KONFIGURÁCIA API (Čítanie z Streamlit Secrets) ---
-try:
-    # BASE_URL (musí byť správne)
-    BASE_URL = st.secrets.get("API_CONFIG", {}).get("BASE_URL")
-    if not BASE_URL:
-        st.error("❌ Chyba konfigurácie Secrets: Chýba BASE_URL v [API_CONFIG].")
-        st.stop()
-        
-    USER_EMAIL = st.secrets["API_CONFIG"]["EMAIL"]
-    USER_PASSWORD = st.secrets["API_CONFIG"]["PASSWORD"]
-    
-    MODULE_UDID = st.secrets["API_CONFIG"]["MODULE_UDID"]
-    MENU_TYPE = "MU"
-except KeyError as e:
-    st.error(f"❌ Chyba konfigurácie Secrets: Chýba kľúč {e}. Skontrolujte nastavenie v Streamlit Cloud (sekcia [API_CONFIG]).")
-    st.stop() 
+# --- KONFIGURÁCIA API (HARDCODED PRE SÚKROMNÝ REPOZITÁR) ---
+# Tieto údaje by mali byť z Vášho lokálneho funkčného testu.
+BASE_URL = "https://emodul.eu/api/v1"
+USER_EMAIL = "jan@wsint.sk"
+USER_PASSWORD = "Babky1444" 
+MODULE_UDID = "b4f6a7d5c5870437e77cc226647e25f"
+MENU_TYPE = "MU"
+USER_ID_DEFAULT = None # Inicializujeme na None, aby sme ho zistili z API
 
 REGULATOR_IDS = {
     "zóna_1": 4615, 
@@ -47,9 +39,13 @@ except KeyError as e:
 
 @st.cache_data(ttl=3600) 
 def login_api(email, password):
-    """Prihlási užívateľa k eModul API a vráti autentizačný token."""
-    url = f"{BASE_URL}/authentication" # Base_URL + /authentication
-    payload = {"username": email, "password": password}
+    """Prihlási užívateľa k eModul API a vráti autentizačný token a prípadné ID."""
+    url = f"{BASE_URL}/authentication" 
+    
+    # Najpravdepodobnejší payload pre API (z lokálnych testov)
+    # Ak by zlyhal, skúste zmeniť "username" na "email"
+    payload = {"username": email, "password": password} 
+    
     headers = {"Content-Type": "application/json"}
     
     with st.spinner("🔑 Prihlasujem sa k eModul API..."):
@@ -58,7 +54,7 @@ def login_api(email, password):
         data = r.json()
         token = data.get("token") or data.get("access_token") or data.get("data", {}).get("token")
         
-        # Pokúsime sa získať USER_ID z odpovede (ak API posiela)
+        # Získanie USER_ID z odpovede (ak API posiela)
         user_id_from_api = data.get("user_id") or data.get("id") or data.get("data", {}).get("id")
         
         return token, user_id_from_api 
@@ -67,7 +63,8 @@ def login_api(email, password):
 def get_module_status(user_id, module_udid, token):
     """Získa všetky dáta modulu."""
     if not user_id:
-        raise ValueError("USER_ID nie je dostupné na získanie stavu modulu.")
+         # Ak tu chýba ID, volanie by zlyhalo (404/401), ale tento kód ho aspoň nezhodí
+         raise ValueError("Chýba USER_ID. API volania nemôžu pokračovať bez neho.")
         
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}"
     headers = {"Authorization": f"Bearer {token}"}
@@ -78,7 +75,7 @@ def get_module_status(user_id, module_udid, token):
 def set_temperature(user_id, module_udid, token, reg_id, temp_c):
     """Nastaví požadovanú teplotu (°C)."""
     if not user_id:
-        raise ValueError("USER_ID nie je dostupné na odoslanie príkazu.")
+        raise ValueError("Chýba USER_ID. API volania nemôžu pokračovať bez neho.")
 
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}/menu/{MENU_TYPE}/ido/{reg_id}"
     payload = {"value": int(round(temp_c * 10))} 
@@ -90,7 +87,7 @@ def set_temperature(user_id, module_udid, token, reg_id, temp_c):
     r.raise_for_status()
     return True
 
-# --- OSTATNÉ FUNKCIE A LOGIKA (Nezmenené) ---
+# --- Zvyšok aplikácie (login_form, logout, kontrola stránok) zostáva nezmenený ---
 
 def log_temperature(status_data, log_file):
     """Načíta aktuálne teploty zo stavu a uloží ich do CSV súboru."""
@@ -147,8 +144,7 @@ def display_login_form():
         st.session_state.logged_in = False
         st.session_state.username = None
         st.session_state.name = None
-        # Nový stav pre API ID
-        st.session_state.api_user_id = USER_ID 
+        st.session_state.api_user_id = USER_ID_DEFAULT
         
     if st.session_state.logged_in:
         st.sidebar.button('Odhlásiť sa', on_click=logout_user)
@@ -177,15 +173,13 @@ def logout_user():
     st.session_state.logged_in = False
     st.session_state.username = None
     st.session_state.name = None
-    st.session_state.api_user_id = USER_ID 
+    st.session_state.api_user_id = USER_ID_DEFAULT
     st.rerun()
 
 # --- HLAVNÝ BEH APLIKÁCIE ---
 
 # 1. Zobrazenie/Spracovanie prihlásenia
 if display_login_form():
-    
-    # 2. Ak je užívateľ ÚSPEŠNE PRIHLÁSENÝ (iba kód aplikácie je pod týmto riadkom)
     
     name = st.session_state.name
 
@@ -208,14 +202,14 @@ if display_login_form():
         # 1. Prihlásenie k API (Získanie tokenu a prípadného ID)
         token, api_id_from_response = login_api(USER_EMAIL, USER_PASSWORD)
         
-        # Ak API odpoveď obsahuje ID, prepíšeme to, čo máme v session state/secrets
-        final_user_id = st.session_state.api_user_id or api_id_from_response or USER_ID
-        st.session_state.api_user_id = final_user_id # Uložíme si to pre ďalšie volania
+        # Určenie finálneho USER_ID: z API alebo náš default (None)
+        final_user_id = api_id_from_response or st.session_state.api_user_id or USER_ID_DEFAULT
+        st.session_state.api_user_id = final_user_id 
         
         if not final_user_id:
-            st.error("⚠️ Neznáme USER_ID! Prihlásenie k API prebehlo, ale nevieme, aké dáta načítať. Skúste ručne pridať USER_ID do Secrets.")
+            st.error("⚠️ Neznáme USER_ID! Prihlásenie k API prebehlo, ale API neposkytlo ID.")
             st.stop()
-            
+        
         # 2. Získanie Aktuálneho Stavu
         status_data = get_module_status(final_user_id, MODULE_UDID, token)
 
@@ -305,4 +299,3 @@ if display_login_form():
         st.error(f"❌ Chyba pri pripojení k API (HTTP {e.response.status_code}). Skontrolujte prihlasovacie údaje alebo API stav.")
     except Exception as e:
         st.error(f"❌ Nastala kritická chyba aplikácie: {e}")
-
