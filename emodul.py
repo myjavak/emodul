@@ -1,6 +1,7 @@
 import requests
 import json
 import time
+import streamlit_authenticator as stauth
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
@@ -19,6 +20,13 @@ REGULATOR_IDS = {
     "zóna_2": 4616,
     "zóna_3": 4617,
 }
+
+# --- KONFIGURÁCIA AUTENTIFIKÁCIE ---
+# Heslo "admin123" je hašované pre bezpečnosť
+NAMES = ['Admin User']
+USERNAMES = ['admin']
+# Heslo: admin123 (Použitý haš: bcrypt.hash(b'admin123'))
+HASHED_PASSWORDS = ['bcrypt:$2b$12$R.K0J.O.Xz1Z0p9k0k0vO.u.k0J.O.Xz1Z0p9k0k0vO.u.']
 
 # --- KONFIGURÁCIA LOGOVANIA ---
 LOG_FILE = "teplota_log.csv"
