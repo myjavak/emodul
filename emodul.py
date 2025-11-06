@@ -129,12 +129,20 @@ authenticator = stauth.Authenticate(
     NAMES,
     USERNAMES,
     HASHED_PASSWORDS,
-    'new_auth_cookie', # Unikátny názov pre test
-    'random_secret_key_123', # Unikátny tajný kľúč
+    'new_auth_cookie', 
+    'random_secret_key_123', 
 )
 
-# ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV (Formát pre V0.1.5)
-name, authentication_status, username = authenticator.login('Login Form', 'main') 
+# ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV (Robustná kontrola)
+login_result = authenticator.login('Login Form', 'main')
+
+if login_result is not None and isinstance(login_result, tuple) and len(login_result) == 3:
+    name, authentication_status, username = login_result
+else:
+    # Ak sa funkcia nevrátila, skontrolujeme Session State
+    authentication_status = st.session_state.get('authentication_status', None)
+    name = st.session_state.get('name')
+    username = st.session_state.get('username')
 
 
 # --- HLAVNÝ BEH APLIKÁCIE ---
