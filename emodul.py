@@ -17,9 +17,6 @@ try:
     USER_EMAIL = st.secrets["API_CONFIG"]["EMAIL"]
     USER_PASSWORD = st.secrets["API_CONFIG"]["PASSWORD"]
     
-    # USER_ID: Používame .get(), aby aplikácia nezlyhala, ak ID chýba
-    USER_ID = st.secrets.get("API_CONFIG", {}).get("USER_ID") 
-    
     MODULE_UDID = st.secrets["API_CONFIG"]["MODULE_UDID"]
     MENU_TYPE = "MU"
 except KeyError as e:
@@ -308,3 +305,4 @@ if display_login_form():
         st.error(f"❌ Chyba pri pripojení k API (HTTP {e.response.status_code}). Skontrolujte prihlasovacie údaje alebo API stav.")
     except Exception as e:
         st.error(f"❌ Nastala kritická chyba aplikácie: {e}")
+
