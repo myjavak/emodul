@@ -29,10 +29,14 @@ REGULATOR_IDS = {
 LOG_FILE = "teplota_log.csv"
 DAYS_TO_SHOW = 3 
 
-# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Čistý Streamlit) ---
-AUTHORIZED_USER = 'testuser'
-AUTHORIZED_PASSWORD = 'testheslo' 
-AUTHORIZED_NAME = 'Test User'
+# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Čítanie zo Secrets) ---
+try:
+    AUTHORIZED_USER = st.secrets["AUTH_CONFIG"]["USERNAME"]
+    AUTHORIZED_PASSWORD = st.secrets["AUTH_CONFIG"]["PASSWORD"]
+    AUTHORIZED_NAME = st.secrets["AUTH_CONFIG"]["NAME"]
+except KeyError as e:
+    st.error(f"❌ Chyba konfigurácie Secrets: Chýba kľúč {e} v sekcii [AUTH_CONFIG].")
+    st.stop()
 
 
 # --- FUNKCIE (API VOLANIA A LOGOVANIE) ---
@@ -283,3 +287,4 @@ if display_login_form():
         st.error(f"❌ Nastala kritická chyba aplikácie: {e}")
 
 # Ak nie je prihlásený, display_login_form() to zabezpečí.
+
