@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import os
-import streamlit_authenticator as stauth 
+# Z knižnice streamlit_authenticator sme sa museli vzdať kvôli nestabilite.
 
 # --- KONFIGURÁCIA API (Čítanie z Streamlit Secrets) ---
 try:
@@ -29,17 +29,17 @@ REGULATOR_IDS = {
 LOG_FILE = "teplota_log.csv"
 DAYS_TO_SHOW = 3 
 
-# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Formát pre V0.1.5) ---
-NAMES = ['Test User']
-USERNAMES = ['testuser']
-# Používame čistý text 'testheslo'
-HASHED_PASSWORDS = ['testheslo'] 
+# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Čistý Streamlit) ---
+AUTHORIZED_USER = 'testuser'
+AUTHORIZED_PASSWORD = 'testheslo' 
+AUTHORIZED_NAME = 'Test User'
 
-# --- CACHED FUNKCIE (API VOLANIA) ---
+
+# --- FUNKCIE (API VOLANIA A LOGOVANIE) ---
 
 @st.cache_data(ttl=3600) 
-def login(email, password):
-    """Prihlási užívateľa a vráti autentizačný token."""
+def login_api(email, password):
+    # ... (ostatné funkcie sú rovnaké)
     url = f"{BASE_URL}/authentication"
     payload = {"username": email, "password": password}
     headers = {"Content-Type": "application/json"}
@@ -55,7 +55,7 @@ def login(email, password):
 
 @st.cache_data(ttl=65) 
 def get_module_status(user_id, module_udid, token):
-    """Získa všetky dáta modulu."""
+    # ... (rovnaká funkcia)
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}"
     headers = {"Authorization": f"Bearer {token}"}
     r = requests.get(url, headers=headers)
@@ -63,22 +63,19 @@ def get_module_status(user_id, module_udid, token):
     return r.json()
 
 def set_temperature(user_id, module_udid, token, reg_id, temp_c):
-    """Nastaví požadovanú teplotu (°C)."""
+    # ... (rovnaká funkcia)
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}/menu/{MENU_TYPE}/ido/{reg_id}"
     payload = {"value": int(round(temp_c * 10))} 
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    
     r = requests.post(url, json=payload, headers=headers)
     r.raise_for_status()
     return True
 
-# --- FUNKCIE PRE LOGOVANIE A ŠTATISTIKY ---
-
 def log_temperature(status_data, log_file):
-    """Načíta aktuálne teploty zo stavu a uloží ich do CSV súboru."""
+    # ... (rovnaká funkcia)
     data_list = status_data.get("tiles", [])
     current_time = datetime.now()
     log_entry = {'timestamp': current_time}
@@ -104,7 +101,7 @@ def log_temperature(status_data, log_file):
     return df_combined
 
 def show_statistics_page(log_file, days_to_show):
-    """Načíta logovacie dáta a vykreslí graf."""
+    # ... (rovnaká funkcia)
     st.title("📈 Historické Štatistiky Teploty")
     st.markdown(f"Zobrazenie dát za posledných **{days_to_show} dní**.")
     if not os.path.exists(log_file):
@@ -123,42 +120,68 @@ def show_statistics_page(log_file, days_to_show):
     except Exception as e:
         st.error(f"Chyba pri načítaní a zobrazení historických dát: {e}")
 
-# --- INICIALIZÁCIA AUTENTIFIKÁTORA (Formát pre V0.1.5) ---
 
-authenticator = stauth.Authenticate(
-    NAMES,
-    USERNAMES,
-    HASHED_PASSWORDS,
-    'new_auth_cookie', 
-    'random_secret_key_123', 
-)
+# --- FUNKCIA PRE LOGIN POMOCOU SESSION STATE ---
 
-# ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV (Robustná kontrola)
-login_result = authenticator.login('Login Form', 'main')
+def display_login_form():
+    """Zobrazí login formulár a spracuje prihlásenie/odhásenie."""
+    
+    # Inicializácia stavu relácie
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.username = None
+        st.session_state.name = None
+        
+    if st.session_state.logged_in:
+        # Ak je prihlásený, zobrazí tlačidlo Odhlásiť sa v sidebar
+        st.sidebar.button('Odhlásiť sa', on_click=logout_user)
+        return True
+    else:
+        # Ak nie je prihlásený, zobrazí login formulár
+        st.title("🔑 Prihlásenie do Termostatu")
+        with st.form("login_form"):
+            username_input = st.text_input("Používateľské meno")
+            password_input = st.text_input("Heslo", type="password")
+            login_button = st.form_submit_button("Prihlásiť sa")
+            
+            if login_button:
+                if username_input == AUTHORIZED_USER and password_input == AUTHORIZED_PASSWORD:
+                    st.session_state.logged_in = True
+                    st.session_state.username = username_input
+                    st.session_state.name = AUTHORIZED_NAME
+                    st.success(f"Vitaj, {AUTHORIZED_NAME}!")
+                    # Musíme znova spustiť aplikáciu, aby sa zobrazil hlavný panel
+                    st.rerun() 
+                else:
+                    st.error("Nesprávne používateľské meno alebo heslo.")
+        
+        # Zabezpečí, že sa nezobrazí žiadny iný obsah aplikácie
+        return False
 
-if login_result is not None and isinstance(login_result, tuple) and len(login_result) == 3:
-    name, authentication_status, username = login_result
-else:
-    # Ak sa funkcia nevrátila, skontrolujeme Session State
-    authentication_status = st.session_state.get('authentication_status', None)
-    name = st.session_state.get('name')
-    username = st.session_state.get('username')
-
+def logout_user():
+    """Resetuje stav prihlásenia."""
+    st.session_state.logged_in = False
+    st.session_state.username = None
+    st.session_state.name = None
+    st.rerun()
 
 # --- HLAVNÝ BEH APLIKÁCIE ---
 
-# 1. Ak je užívateľ ÚSPEŠNE PRIHLÁSENÝ
-if authentication_status: 
+# 1. Zobrazenie/Spracovanie prihlásenia
+if display_login_form():
     
-    # --- BOČNÉ MENU A LOGOUT ---
-    authenticator.logout('Odhlásiť sa', location='sidebar')
+    # 2. Ak je užívateľ ÚSPEŠNE PRIHLÁSENÝ (iba kód aplikácie je pod týmto riadkom)
+    
+    name = st.session_state.name
+    username = st.session_state.username
+
+    # --- BOČNÉ MENU ---
+    st.sidebar.title(f"Vitaj, {name}!")
+    st.sidebar.markdown("---")
     
     if 'page' not in st.session_state:
         st.session_state.page = 'Control'
 
-    st.sidebar.title(f"Vitaj, {name}!")
-    st.sidebar.markdown("---")
-    
     if st.sidebar.button("Ovládací Panel (Aktuálny Stav)"):
         st.session_state.page = 'Control'
     if st.sidebar.button("Historické Štatistiky"):
@@ -168,8 +191,8 @@ if authentication_status:
 
     # --- KONTROLNÝ/ŠTATISTICKÝ KÓD ---
     try:
-        # 1. Prihlásenie a získanie tokenu
-        token = login(USER_EMAIL, USER_PASSWORD)
+        # 1. Prihlásenie k API (používame USER_EMAIL/PASSWORD z secrets.toml)
+        token = login_api(USER_EMAIL, USER_PASSWORD)
         
         # 2. Získanie Aktuálneho Stavu
         status_data = get_module_status(USER_ID, MODULE_UDID, token)
@@ -259,8 +282,4 @@ if authentication_status:
     except Exception as e:
         st.error(f"❌ Nastala kritická chyba aplikácie: {e}")
 
-# 2. Ak NIE JE prihlásený, zobrazíme chybu
-elif authentication_status is False:
-    st.error('Používateľské meno/heslo je nesprávne.')
-elif authentication_status is None:
-    st.warning('Prosím, zadajte svoje prihlasovacie údaje na prístup.')
+# Ak nie je prihlásený, display_login_form() to zabezpečí.
