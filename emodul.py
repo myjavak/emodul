@@ -152,7 +152,7 @@ authenticator = stauth.Authenticate(
 )
 
 # ZOBRAZÍ LOGIN FORMULÁR A VRÁTI STAV
-name, authentication_status, username = authenticator.login('Login Form', location='main')
+name, authentication_status, username = authenticator.form_login()
 
 
 # --- HLAVNÝ BEH APLIKÁCIE ---
@@ -274,4 +274,5 @@ elif authentication_status is False:
     st.error('Používateľské meno/heslo je nesprávne.')
 elif authentication_status is None:
     st.warning('Prosím, zadajte svoje prihlasovacie údaje na prístup.')
+
 
