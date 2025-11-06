@@ -5,18 +5,25 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import os
-# Z knižnice streamlit_authenticator sme sa museli vzdať kvôli nestabilite.
 
 # --- KONFIGURÁCIA API (Čítanie z Streamlit Secrets) ---
 try:
-    BASE_URL = st.secrets["API_CONFIG"]["BASE_URL"]
+    # BASE_URL (musí byť správne)
+    BASE_URL = st.secrets.get("API_CONFIG", {}).get("BASE_URL")
+    if not BASE_URL:
+        st.error("❌ Chyba konfigurácie Secrets: Chýba BASE_URL v [API_CONFIG].")
+        st.stop()
+        
     USER_EMAIL = st.secrets["API_CONFIG"]["EMAIL"]
     USER_PASSWORD = st.secrets["API_CONFIG"]["PASSWORD"]
-    USER_ID = st.secrets["API_CONFIG"]["USER_ID"]
+    
+    # USER_ID: Používame .get(), aby aplikácia nezlyhala, ak ID chýba
+    USER_ID = st.secrets.get("API_CONFIG", {}).get("USER_ID") 
+    
     MODULE_UDID = st.secrets["API_CONFIG"]["MODULE_UDID"]
     MENU_TYPE = "MU"
 except KeyError as e:
-    st.error(f"❌ Chyba konfigurácie Secrets: Chýba kľúč {e}. Skontrolujte nastavenie v Streamlit Cloud.")
+    st.error(f"❌ Chyba konfigurácie Secrets: Chýba kľúč {e}. Skontrolujte nastavenie v Streamlit Cloud (sekcia [API_CONFIG]).")
     st.stop() 
 
 REGULATOR_IDS = {
@@ -29,7 +36,7 @@ REGULATOR_IDS = {
 LOG_FILE = "teplota_log.csv"
 DAYS_TO_SHOW = 3 
 
-# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Čítanie zo Secrets) ---
+# --- KONFIGURÁCIA AUTENTIFIKÁCIE (Čítanie zo Secrets - APP Login) ---
 try:
     AUTHORIZED_USER = st.secrets["AUTH_CONFIG"]["USERNAME"]
     AUTHORIZED_PASSWORD = st.secrets["AUTH_CONFIG"]["PASSWORD"]
@@ -39,27 +46,32 @@ except KeyError as e:
     st.stop()
 
 
-# --- FUNKCIE (API VOLANIA A LOGOVANIE) ---
+# --- FUNKCIE (API VOLANIA) ---
 
 @st.cache_data(ttl=3600) 
 def login_api(email, password):
-    # ... (ostatné funkcie sú rovnaké)
-    url = f"{BASE_URL}/authentication"
+    """Prihlási užívateľa k eModul API a vráti autentizačný token."""
+    url = f"{BASE_URL}/authentication" # Base_URL + /authentication
     payload = {"username": email, "password": password}
     headers = {"Content-Type": "application/json"}
     
     with st.spinner("🔑 Prihlasujem sa k eModul API..."):
         r = requests.post(url, json=payload, headers=headers)
-        r.raise_for_status()
+        r.raise_for_status() # TU SA VYHODÍ CHYBA 401
         data = r.json()
         token = data.get("token") or data.get("access_token") or data.get("data", {}).get("token")
-        if not token:
-            raise Exception(f"Nenašiel som token v odpovedi.")
-        return token
+        
+        # Pokúsime sa získať USER_ID z odpovede (ak API posiela)
+        user_id_from_api = data.get("user_id") or data.get("id") or data.get("data", {}).get("id")
+        
+        return token, user_id_from_api 
 
 @st.cache_data(ttl=65) 
 def get_module_status(user_id, module_udid, token):
-    # ... (rovnaká funkcia)
+    """Získa všetky dáta modulu."""
+    if not user_id:
+        raise ValueError("USER_ID nie je dostupné na získanie stavu modulu.")
+        
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}"
     headers = {"Authorization": f"Bearer {token}"}
     r = requests.get(url, headers=headers)
@@ -67,7 +79,10 @@ def get_module_status(user_id, module_udid, token):
     return r.json()
 
 def set_temperature(user_id, module_udid, token, reg_id, temp_c):
-    # ... (rovnaká funkcia)
+    """Nastaví požadovanú teplotu (°C)."""
+    if not user_id:
+        raise ValueError("USER_ID nie je dostupné na odoslanie príkazu.")
+
     url = f"{BASE_URL}/users/{user_id}/modules/{module_udid}/menu/{MENU_TYPE}/ido/{reg_id}"
     payload = {"value": int(round(temp_c * 10))} 
     headers = {
@@ -78,8 +93,10 @@ def set_temperature(user_id, module_udid, token, reg_id, temp_c):
     r.raise_for_status()
     return True
 
+# --- OSTATNÉ FUNKCIE A LOGIKA (Nezmenené) ---
+
 def log_temperature(status_data, log_file):
-    # ... (rovnaká funkcia)
+    """Načíta aktuálne teploty zo stavu a uloží ich do CSV súboru."""
     data_list = status_data.get("tiles", [])
     current_time = datetime.now()
     log_entry = {'timestamp': current_time}
@@ -105,7 +122,7 @@ def log_temperature(status_data, log_file):
     return df_combined
 
 def show_statistics_page(log_file, days_to_show):
-    # ... (rovnaká funkcia)
+    """Načíta logovacie dáta a vykreslí graf."""
     st.title("📈 Historické Štatistiky Teploty")
     st.markdown(f"Zobrazenie dát za posledných **{days_to_show} dní**.")
     if not os.path.exists(log_file):
@@ -124,24 +141,22 @@ def show_statistics_page(log_file, days_to_show):
     except Exception as e:
         st.error(f"Chyba pri načítaní a zobrazení historických dát: {e}")
 
-
 # --- FUNKCIA PRE LOGIN POMOCOU SESSION STATE ---
 
 def display_login_form():
     """Zobrazí login formulár a spracuje prihlásenie/odhásenie."""
     
-    # Inicializácia stavu relácie
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.username = None
         st.session_state.name = None
+        # Nový stav pre API ID
+        st.session_state.api_user_id = USER_ID 
         
     if st.session_state.logged_in:
-        # Ak je prihlásený, zobrazí tlačidlo Odhlásiť sa v sidebar
         st.sidebar.button('Odhlásiť sa', on_click=logout_user)
         return True
     else:
-        # Ak nie je prihlásený, zobrazí login formulár
         st.title("🔑 Prihlásenie do Termostatu")
         with st.form("login_form"):
             username_input = st.text_input("Používateľské meno")
@@ -154,12 +169,10 @@ def display_login_form():
                     st.session_state.username = username_input
                     st.session_state.name = AUTHORIZED_NAME
                     st.success(f"Vitaj, {AUTHORIZED_NAME}!")
-                    # Musíme znova spustiť aplikáciu, aby sa zobrazil hlavný panel
                     st.rerun() 
                 else:
                     st.error("Nesprávne používateľské meno alebo heslo.")
         
-        # Zabezpečí, že sa nezobrazí žiadny iný obsah aplikácie
         return False
 
 def logout_user():
@@ -167,6 +180,7 @@ def logout_user():
     st.session_state.logged_in = False
     st.session_state.username = None
     st.session_state.name = None
+    st.session_state.api_user_id = USER_ID 
     st.rerun()
 
 # --- HLAVNÝ BEH APLIKÁCIE ---
@@ -177,7 +191,6 @@ if display_login_form():
     # 2. Ak je užívateľ ÚSPEŠNE PRIHLÁSENÝ (iba kód aplikácie je pod týmto riadkom)
     
     name = st.session_state.name
-    username = st.session_state.username
 
     # --- BOČNÉ MENU ---
     st.sidebar.title(f"Vitaj, {name}!")
@@ -195,11 +208,19 @@ if display_login_form():
 
     # --- KONTROLNÝ/ŠTATISTICKÝ KÓD ---
     try:
-        # 1. Prihlásenie k API (používame USER_EMAIL/PASSWORD z secrets.toml)
-        token = login_api(USER_EMAIL, USER_PASSWORD)
+        # 1. Prihlásenie k API (Získanie tokenu a prípadného ID)
+        token, api_id_from_response = login_api(USER_EMAIL, USER_PASSWORD)
         
+        # Ak API odpoveď obsahuje ID, prepíšeme to, čo máme v session state/secrets
+        final_user_id = st.session_state.api_user_id or api_id_from_response or USER_ID
+        st.session_state.api_user_id = final_user_id # Uložíme si to pre ďalšie volania
+        
+        if not final_user_id:
+            st.error("⚠️ Neznáme USER_ID! Prihlásenie k API prebehlo, ale nevieme, aké dáta načítať. Skúste ručne pridať USER_ID do Secrets.")
+            st.stop()
+            
         # 2. Získanie Aktuálneho Stavu
-        status_data = get_module_status(USER_ID, MODULE_UDID, token)
+        status_data = get_module_status(final_user_id, MODULE_UDID, token)
 
         # 3. Logovanie dát 
         log_df = log_temperature(status_data, LOG_FILE)
@@ -265,7 +286,7 @@ if display_login_form():
             if st.button(f"🚀 Nastaviť {selected_zone.upper()} na {target_temp}°C"):
                 
                 try:
-                    set_temperature(USER_ID, MODULE_UDID, token, reg_id_to_set, target_temp)
+                    set_temperature(final_user_id, MODULE_UDID, token, reg_id_to_set, target_temp)
                     
                     st.success(f"Príkaz na nastavenie {selected_zone.upper()} na {target_temp}°C bol úspešne odoslaný.")
                     st.info("⚠️ Zmena cieľovej teploty sa v zobrazenom stave prejaví až **po cca 60 sekundách** (API oneskorenie).")
@@ -274,6 +295,8 @@ if display_login_form():
                     
                 except requests.exceptions.HTTPError as e:
                     st.error(f"❌ Chyba pri odosielaní príkazu: HTTP {e.response.status_code}. Skontrolujte logy.")
+                except ValueError as e:
+                    st.error(f"❌ Chyba: {e}")
                 except Exception as e:
                     st.error(f"❌ Vyskytla sa chyba: {e}")
 
@@ -285,6 +308,3 @@ if display_login_form():
         st.error(f"❌ Chyba pri pripojení k API (HTTP {e.response.status_code}). Skontrolujte prihlasovacie údaje alebo API stav.")
     except Exception as e:
         st.error(f"❌ Nastala kritická chyba aplikácie: {e}")
-
-# Ak nie je prihlásený, display_login_form() to zabezpečí.
-
